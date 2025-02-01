@@ -15,8 +15,9 @@ def get_staff_model():
 
 # Create a staff member
 @staff_bp.route("/", methods=["POST"])
+@staff_bp.route("/", methods=["POST"])
 def add_staff():
-    Staff = get_staff_model()  # Lazy import
+    Staff = get_staff_model()
     db = get_db()
 
     data = request.json
@@ -27,10 +28,16 @@ def add_staff():
     if existing_user:
         return jsonify({"message": "Username already exists"}), 400
 
+    # ✅ Create new staff member
     new_staff = Staff(name=data["name"], username=data["username"], notes=data.get("notes", ""))
+    
+    # ✅ Fetch Minecraft UUID
+    new_staff.fetch_minecraft_uuid()
+
     db.session.add(new_staff)
     db.session.commit()
-    return jsonify({"message": "Staff added", "staff": data}), 201
+    return jsonify({"message": "Staff added", "staff": {"name": new_staff.name, "username": new_staff.username, "uuid": new_staff.minecraft_uuid}}), 201
+
 
 # Get all staff members
 @staff_bp.route("/", methods=["GET"])
@@ -40,10 +47,20 @@ def get_staff():
 
     staff_list = Staff.query.all()
     result = [
-        {"id": s.id, "name": s.name, "username": s.username, "notes": s.notes, "last_login": s.last_login, "total_time_online": s.total_time_online}
+        {
+            "id": s.id,
+            "name": s.name,
+            "username": s.username,
+            "notes": s.notes,
+            "last_login": s.last_login,
+            "total_time_online": s.total_time_online,
+            "minecraft_uuid": s.minecraft_uuid,
+            "skin_url": s.skin_url
+        }
         for s in staff_list
     ]
     return jsonify(result)
+
 
 # Log a staff login
 @staff_bp.route("/login/<string:username>", methods=["POST"])
@@ -100,15 +117,14 @@ def update_staff(staff_id):
         return jsonify({"message": "Staff not found"}), 404
 
     data = request.json
-    if "username" in data:
-        # Ensure new username isn't taken by another staff member
-        existing_user = Staff.query.filter_by(username=data["username"]).first()
-        if existing_user and existing_user.id != staff_id:
-            return jsonify({"message": "Username already exists"}), 400
+    if "username" in data and data["username"] != staff.username:
+        # ✅ If the username is changed, fetch new UUID
+        staff.username = data["username"]
+        staff.fetch_minecraft_uuid()
 
     staff.name = data.get("name", staff.name)
-    staff.username = data.get("username", staff.username)
     staff.notes = data.get("notes", staff.notes)
 
     db.session.commit()
-    return jsonify({"message": "Staff updated"}), 200
+    return jsonify({"message": "Staff updated", "uuid": staff.minecraft_uuid}), 200
+
